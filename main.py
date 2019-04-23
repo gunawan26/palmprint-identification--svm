@@ -1,97 +1,69 @@
-import os
 import sys
-from pathlib import Path
+import os
 
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn import datasets, metrics, svm, preprocessing 
+from sklearn import datasets, metrics, preprocessing, svm
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.utils import Bunch
+from image_processing import preprocessing_gambar, feature_extraction
 
 import cv2
+import pickle
+from joblib import dump, load
 
-#from skimage.io import imread
-#from skimage.transform import resize
-# from skimage.io import imread
 
 PATH = "D:\\project_biometrika\\dataset\\train"
-WEIGHT,HEIGHT = 150,150
+WEIGHT, HEIGHT = 150, 150
 
 RZ_WIDTH = 75
 RZ_HEIGHT = 75
+"""
+
+Proses : Load gambar 
+        -> preprocessing(gaussian filter) 
+        -> feature_feature extraction(laplacian) 
+        -> classifier(SVM)
+
+"""
+
+
 def load_gambar():
-
-    class_folders = [class_dirs for class_dirs in os.listdir(PATH) if os.path.isdir(PATH+"\\{}".format(class_dirs))]
+    # class the images by folder
     cats = [cats for cats in os.listdir(PATH+"\\.")]
-    
     deskripsi = "klasifikasi telapak tangan"
-
     images = []
     flatten_images = []
     target = []
 
-    print(len(os.listdir(PATH)))
-
-    for i, dir_images in zip(range(30),os.listdir(PATH)):
+    for i, dir_images in zip(range(10), os.listdir(PATH)):
         for file in os.listdir(PATH+"\\{}".format(dir_images)):
-            dir = os.path.join(PATH+"\\{}".format(dir_images),file)
-            #get images
-            img = cv2.imread(dir,0)
-            #preprocessing process
-            # img = cv2.resize(img,(int(RZ_WIDTH),int(RZ_HEIGHT)))
-            after_preprocessing_img = preprocessing_gambar(img)
-            #after feature ext 
-            aft_feature_ext = feature_extraction(after_preprocessing_img)
-            #flatten the images
+            # get image from folder dir category
+            dir = os.path.join(PATH+"\\{}".format(dir_images), file)
+            # load image
+            img = cv2.imread(dir, 0)
+            after_preprocessing_img = preprocessing_gambar(
+                img)  # preprocessing image
+            # feature extraction laplacian and gabor, default laplacian
+            aft_feature_ext = feature_extraction(
+                after_preprocessing_img, 'gabor')
+        #     print("image chanel {}".format(len(aft_feature_ext.shape)))
+            # flatten the images to 1 dimensional numpy array
             flatten_images.append(aft_feature_ext.flatten())
-            #append images
-            images.append(aft_feature_ext)
+            images.append(aft_feature_ext)  # append numpy array image to list
             target.append(i)
-
     flatten_images = np.array(flatten_images)
     images = np.array(images)
     target = np.array(target)
-
-
-
-            #flatten_images.append(cv2.imread(dir,0))
     print("sukses")
 
-    return Bunch(data = flatten_images,
-                target = target,
-                target_names = cats,
-                images = images,
-                descr = deskripsi
-                )
-    pass
-
-
-def preprocessing_gambar(raw_image_args):
-    img = cv2.GaussianBlur(raw_image_args,(5,5),0)
-  #  return cv2.dilate(img, np.ones((5,5), np.uint8) , iterations=1) 
-    return img
-
-
-def feature_extraction(after_pre_img_args,ext_feature = 'laplacian'):
-    
-    if ext_feature == 'laplacian':
-        val = cv2.Laplacian(after_pre_img_args,cv2.CV_64F)
-        abs_dst = cv2.convertScaleAbs(val)
-        # abs_dst = cv2.adaptiveThreshold(abs_dst,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY,3,2)
-
-        #ret,th2 = cv2.threshold(abs_dst,15,255,cv2.THRESH_BINARY)
-        return abs_dst
-    elif ext_feature == 'gabor':
-        return gabor_filter(after_pre_img_args)
-   
-
-
-def gabor_filter(image_args):
-    gkernel =  cv2.getGaborKernel((15, 15), 8.0, np.pi/4, 10.0, 0.5, 0, ktype=cv2.CV_32F)
-    filtered_img = cv2.filter2D(image_args, cv2.CV_8UC3, gkernel)
-    return filtered_img
-
+    return Bunch(data=flatten_images,
+                 target=target,
+                 target_names=cats,
+                 images=images,
+                 descr=deskripsi
+                 )
 
 
 def main():
@@ -101,37 +73,34 @@ def main():
     print("load gambar sukses...")
 
     print('melakukan split test')
-
-    # print(image_dataset.images)
-
     X_train, X_test, y_train, y_test = train_test_split(
-    image_dataset.data, image_dataset.target, test_size=0.1)
+        image_dataset.data, image_dataset.target, test_size=0.1)
+
     print('split test selesai')
-    # scaler = StandardScaler()
-    X_train =preprocessing.scale( X_train )
-    X_test = preprocessing.scale( X_test )
+#     X_train =preprocessing.scale( X_train )
+#     X_test = preprocessing.scale( X_test )
 
-    """
-    param_grid = [
-    {'C': [1, 10, 100, 1000], 'kernel': ['linear']},
-    {'C': [1, 10, 100, 1000], 'gamma': [0.001, 0.0001], 'kernel': ['rbf']},
-    ]
-    """
     print('mencoba melakukan training')
-    clf = svm.LinearSVC(multi_class='crammer_singer',max_iter=5000)
-   # clf = GridSearchCV(svc, param_grid)
-
+    estimator = svm.LinearSVC(max_iter=10000)
+    param_grid = [
+        {'multi_class': ['ovr'], 'C': [1000, 10000], 'dual':[False]},
+        {'C': [1000, 10000], 'multi_class': ['crammer_singer']}
+    ]
+    clf = GridSearchCV(estimator, param_grid=param_grid,
+                       cv=5, refit=True, n_jobs=-1)
     clf.fit(X_train, y_train)
-
     print('training selesai')
+    y_pred = clf.predict(X_test)
 
-    y_pred = clf.predict(X_test)    
-
+    print(y_test)
+    print(y_pred)
     #print("Classification report for - \n{}:\n{}\n".format(clf, metrics.classification_report(y_test, y_pred)))
     print(accuracy_score(y_test, y_pred))
     # print(X_train[0])
+    dump(clf, 'model_10_gabor.joblib')
 
     pass
+
 
 if __name__ == "__main__":
     main()
